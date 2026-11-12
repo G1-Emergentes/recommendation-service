@@ -1,0 +1,41 @@
+{
+  "project_id": "dry-credit-06448578",
+  "project_name": "mirage-recommendation-vectors",
+  "organization": "mateo",
+  "plan_at_creation": "free",
+  "region": "aws-us-east-1",
+  "database": "recommendation_vectors",
+  "development_branch": "dev-vector-store",
+  "development_branch_id": "br-fancy-wildflower-bcxev7zf",
+  "main_branch_id": "br-soft-meadow-bczoxhyn",
+  "application_role": "mirage_vector_app",
+  "migration_applied_to": "main",
+  "main_migration_applied": true,
+  "sync_implemented": true,
+  "rag_enabled": true,
+  "rag_scope": "style knowledge -> private wardrobe candidates -> shape-filtered Polyvore train projections -> validated generation",
+  "outfit_generation_always_retrieves_vectors": true,
+  "style_knowledge": {
+    "table": "recommendation.style_knowledge",
+    "documents": 8,
+    "application_access": "SELECT published with authenticated actor",
+    "retrieved_before_wardrobe": true,
+    "migration": "002_style_knowledge.sql"
+  },
+  "polyvore": {
+    "table": "recommendation.outfit_examples",
+    "documents": 128,
+    "structures": {
+      "SEPARATES": 64,
+      "ONE_PIECE": 64
+    },
+    "source_commit": "ba8aa71b6589e8920d172a8b5df84746be724d00",
+    "source_split": "train",
+    "reserved_holdout": 24,
+    "application_access": "SELECT published train with authenticated actor",
+    "migration": "003_polyvore_examples.sql"
+  },
+  "active_branch": "main",
+  "active_branch_id": "br-soft-meadow-bczoxhyn",
+  "development_test_config": ".env.rag-test"
+}

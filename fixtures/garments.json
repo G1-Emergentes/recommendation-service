@@ -1,0 +1,124 @@
+{
+  "items": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "name": "Polo blanco",
+      "category": "TOP",
+      "subcategory": "T_SHIRT",
+      "colors": [
+        "WHITE"
+      ],
+      "styles": [
+        "CASUAL"
+      ],
+      "description": "Polo blanco liso, manga corta.",
+      "availability": "AVAILABLE",
+      "image": null,
+      "revision": 1,
+      "updated_at": "2026-11-10T15:30:00Z"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "name": "Jean azul",
+      "category": "BOTTOM",
+      "subcategory": "JEANS",
+      "colors": [
+        "BLUE"
+      ],
+      "styles": [
+        "CASUAL"
+      ],
+      "description": "Pantalon denim azul de corte recto.",
+      "availability": "AVAILABLE",
+      "image": null,
+      "revision": 1,
+      "updated_at": "2026-11-10T15:30:00Z"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000003",
+      "name": "Zapatillas blancas",
+      "category": "FOOTWEAR",
+      "subcategory": "SNEAKERS",
+      "colors": [
+        "WHITE"
+      ],
+      "styles": [
+        "CASUAL"
+      ],
+      "description": "Zapatillas blancas lisas.",
+      "availability": "AVAILABLE",
+      "image": null,
+      "revision": 1,
+      "updated_at": "2026-11-10T15:30:00Z"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000004",
+      "name": "Vestido negro",
+      "category": "ONE_PIECE",
+      "subcategory": "DRESS",
+      "colors": [
+        "BLACK"
+      ],
+      "styles": [
+        "CASUAL"
+      ],
+      "description": "Vestido negro sencillo.",
+      "availability": "AVAILABLE",
+      "image": null,
+      "revision": 1,
+      "updated_at": "2026-11-10T15:30:00Z"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000005",
+      "name": "Polo verde",
+      "category": "TOP",
+      "subcategory": "T_SHIRT",
+      "colors": [
+        "GREEN"
+      ],
+      "styles": [
+        "CASUAL"
+      ],
+      "description": "Polo verde liso.",
+      "availability": "AVAILABLE",
+      "image": null,
+      "revision": 1,
+      "updated_at": "2026-11-10T15:30:00Z"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000006",
+      "name": "Polo no disponible",
+      "category": "TOP",
+      "subcategory": "T_SHIRT",
+      "colors": [
+        "BLUE"
+      ],
+      "styles": [
+        "CASUAL"
+      ],
+      "description": "Polo azul no disponible.",
+      "availability": "UNAVAILABLE",
+      "image": null,
+      "revision": 1,
+      "updated_at": "2026-11-10T15:30:00Z"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000007",
+      "name": "Camisa formal",
+      "category": "TOP",
+      "subcategory": "SHIRT",
+      "colors": [
+        "WHITE"
+      ],
+      "styles": [
+        "FORMAL"
+      ],
+      "description": "Camisa blanca formal.",
+      "availability": "AVAILABLE",
+      "image": null,
+      "revision": 1,
+      "updated_at": "2026-11-10T15:30:00Z"
+    }
+  ],
+  "next_cursor": null
+}

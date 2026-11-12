@@ -1,0 +1,1885 @@
+{
+  "info": {
+    "_postman_id": "71dda7d5-9624-53e1-a7cb-582195559594",
+    "name": "Mirage - Recommendation + IAM",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Importar junto con Mirage Local y seleccionar ese entorno. Si ya incluye token, comenzar en 02 Recomendaciones. Si no, completar login_email/login_password en Postman y ejecutar Login. Login y Refresh capturan tokens; se intenta renovacion antes de peticiones protegidas cuando faltan menos de 30 segundos. Logout va al final. No incluye claves de NVIDIA ni Supabase. Cada ejecucion de Generar crea propuestas y puede consumir cuota del modelo.\n\nCon RECOMMENDATION_RAG_ENABLED=true, la generación y el chat recuperan candidatos automáticamente desde Neon antes del modelo. No requieren sync manual; las consultas a Neon no usan credenciales en Postman.\n\nIncluye search_style_knowledge y recuperación automática de referencias antes de candidatos de outfits. Fuentes recuperadas en style_references; no son prueba de uso por el modelo.\n\nIncluye recuperación automática de ejemplos Polyvore y consulta de inspección; datos del split train, sin imágenes."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "(function () {",
+          "    if (pm.request.auth && pm.request.auth.type === 'noauth') return;",
+          "    const token = pm.environment.get('access_token');",
+          "    const expires = Number(pm.environment.get('access_token_expires_at') || 0);",
+          "    const refresh = pm.environment.get('refresh_token');",
+          "    const mustRefresh = refresh && (!token || (expires > 0 && expires <= Math.floor(Date.now()/1000) + 30));",
+          "    if (!mustRefresh) return;",
+          "    pm.sendRequest({",
+          "        url: pm.environment.get('iam_base_url') + '/api/v1/auth/refresh',",
+          "        method: 'POST', header: {'Content-Type':'application/json'},",
+          "        body: {mode:'raw', raw:JSON.stringify({refresh_token:refresh})}",
+          "    }, function (error, response) {",
+          "        if (error || !response || response.code !== 200) {",
+          "            throw new Error('No se pudo renovar la sesion. Ejecuta Login de nuevo.');",
+          "        }",
+          "        const data = response.json();",
+          "        if (!data.access_token || !data.refresh_token) throw new Error('Respuesta de refresh invalida.');",
+          "        pm.environment.set('access_token', data.access_token);",
+          "        pm.environment.set('refresh_token', data.refresh_token);",
+          "        pm.environment.set('access_token_expires_at', data.expires_at || Math.floor(Date.now()/1000)+Number(data.expires_in || 3600));",
+          "        if (data.user && data.user.id) pm.environment.set('user_id', data.user.id);",
+          "    });",
+          "})();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Estado",
+      "item": [
+        {
+          "name": "IAM - Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{iam_base_url}}/health",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recommendation - Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{recommendation_base_url}}/health",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Servicio correcto', function(){ pm.expect(pm.response.json().service).to.eql('recommendation-service'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{recommendation_base_url}}/openapi.json",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 Sesion IAM",
+      "item": [
+        {
+          "name": "Login - guardar tokens",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{iam_base_url}}/api/v1/auth/login",
+            "description": "Si el entorno ya incluye un token valido puedes omitir este request. Las credenciales se introducen solo en el entorno local.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{login_body}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = pm.environment.get('login_email');",
+                  "const password = pm.environment.get('login_password');",
+                  "if (!email || !password) throw new Error('Completa login_email y login_password en el entorno local antes de ejecutar Login. Si ya tienes token, empieza por Recomendaciones.');",
+                  "pm.variables.set('login_body', JSON.stringify({email:email,password:password}));",
+                  "['access_token','refresh_token','access_token_expires_at','user_id','recommendation_id','request_id','next_cursor'].forEach(function(k){pm.environment.unset(k);});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesion obtenida', function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('Access y refresh tokens presentes', function () {",
+                  "        pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "        pm.expect(data.refresh_token).to.be.a('string').and.not.empty;",
+                  "    });",
+                  "    if (data.access_token && data.refresh_token) {",
+                  "        pm.environment.set('access_token', data.access_token);",
+                  "        pm.environment.set('refresh_token', data.refresh_token);",
+                  "        pm.environment.set('access_token_expires_at', data.expires_at || Math.floor(Date.now()/1000) + Number(data.expires_in || 3600));",
+                  "        if (data.user && data.user.id) pm.environment.set('user_id', data.user.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Usuario actual",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{iam_base_url}}/api/v1/auth/me",
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "if(pm.response.code===200) pm.environment.set('user_id',pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preferencias actuales",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{iam_base_url}}/api/v1/profiles/{{user_id}}/preferences",
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renovar sesion - rotar tokens",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{iam_base_url}}/api/v1/auth/refresh",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{refresh_body}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token=pm.environment.get('refresh_token'); if(!token) throw new Error('Primero ejecuta Login.'); pm.variables.set('refresh_body',JSON.stringify({refresh_token:token}));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sesion obtenida', function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('Access y refresh tokens presentes', function () {",
+                  "        pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "        pm.expect(data.refresh_token).to.be.a('string').and.not.empty;",
+                  "    });",
+                  "    if (data.access_token && data.refresh_token) {",
+                  "        pm.environment.set('access_token', data.access_token);",
+                  "        pm.environment.set('refresh_token', data.refresh_token);",
+                  "        pm.environment.set('access_token_expires_at', data.expires_at || Math.floor(Date.now()/1000) + Number(data.expires_in || 3600));",
+                  "        if (data.user && data.user.id) pm.environment.set('user_id', data.user.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Recomendaciones",
+      "item": [
+        {
+          "name": "Generar outfits - guardar IDs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{recommendation_base_url}}/api/v1/recommendations",
+            "description": "Genera con las prendas del usuario si el servicio está en live; demo usa fixtures. Revalida en Closet antes de guardar. 409 WARDROBE_CHANGED no crea propuestas. La respuesta incluye garments con los metadatos versionados de las prendas finales.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"occasion\": \"Universidad\",\n  \"style\": \"CASUAL\",\n  \"excluded_garments\": [],\n  \"max_results\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code===200) {",
+                  "    const data=pm.response.json();",
+                  "    pm.test('Resultado persistido',function(){pm.expect(data.persisted).to.eql(true);});",
+                  "    pm.environment.set('request_id',data.request_id);",
+                  "    if(data.outfits && data.outfits.length) pm.environment.set('recommendation_id',data.outfits[0].id);",
+                  "    else pm.environment.unset('recommendation_id');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle del primer outfit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{recommendation_base_url}}/api/v1/recommendations/{{recommendation_id}}",
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('recommendation_id')) throw new Error('Primero ejecuta Generar outfits y comprueba que devuelve propuestas.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Historial propio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{recommendation_base_url}}/api/v1/recommendations?limit={{page_limit}}",
+            "description": "Para otra pagina, agrega cursor={{next_cursor}} cuando next_cursor no este vacio."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "if(pm.response.code===200) pm.environment.set('next_cursor',pm.response.json().next_cursor || '');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Feedback",
+      "item": [
+        {
+          "name": "Marcar favorito",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{recommendation_base_url}}/api/v1/recommendations/{{recommendation_id}}/favorite",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"favorite\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('recommendation_id')) throw new Error('Primero ejecuta Generar outfits y comprueba que devuelve propuestas.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "if(pm.response.code===200) pm.test('Favorito activo',function(){pm.expect(pm.response.json().is_favorite).to.eql(true);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar favoritos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{recommendation_base_url}}/api/v1/recommendations?favorite=true&limit={{page_limit}}",
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quitar favorito",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{recommendation_base_url}}/api/v1/recommendations/{{recommendation_id}}/favorite",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"favorite\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('recommendation_id')) throw new Error('Primero ejecuta Generar outfits y comprueba que devuelve propuestas.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechazar propuesta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{recommendation_base_url}}/api/v1/recommendations/{{recommendation_id}}/reject",
+            "description": "Registra feedback y quita favorito. La misma propuesta rechazada no puede marcarse favorita de nuevo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Prefiero otra combinacion\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('recommendation_id')) throw new Error('Primero ejecuta Generar outfits y comprueba que devuelve propuestas.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "if(pm.response.code===200) pm.test('Propuesta rechazada',function(){pm.expect(pm.response.json().status).to.eql('REJECTED');});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Cerrar sesion",
+      "item": [
+        {
+          "name": "Logout - invalidar y limpiar tokens",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{iam_base_url}}/api/v1/auth/logout",
+            "description": "Ejecutar al terminar: invalida la sesion actual. Para seguir probando despues, inicia sesion otra vez.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "if(pm.response.code===200) ['access_token','refresh_token','access_token_expires_at','user_id','recommendation_id','request_id','next_cursor'].forEach(function(k){pm.environment.unset(k);});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Chat conversacional",
+      "item": [
+        {
+          "name": "Crear conversacion - guardar ID",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Mi asesor de outfits\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+                  "if(pm.response.code===201) pm.environment.set('conversation_id',pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enviar mensaje - escribe en Body",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Escribe tu texto en message, en Body. Cada Send crea un turno nuevo. Conserva el mismo conversation_id para continuar el chat. Si falla el envío usa Reintentar ultimo mensaje; conserva el client_message_id y el texto originales.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Quiero un outfit comodo para la universidad\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reintentar ultimo mensaje - mismo ID",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Reenvía el último texto con su mismo ID, incluso si falló la respuesta de red. No crea una nueva recomendación si el turno ya estaba guardado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{chat_message_body}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('last_client_message_id')) throw new Error('Primero envia un mensaje.');",
+                  "pm.variables.set('chat_message_body',JSON.stringify({message:pm.environment.get('last_chat_message'),client_message_id:pm.environment.get('last_client_message_id')}));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Leer conversacion y mensajes",
+          "request": {
+            "method": "GET",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar mis conversaciones",
+          "request": {
+            "method": "GET",
+            "url": "{{recommendation_base_url}}/api/v1/conversations?limit=20",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 Memoria y gustos",
+      "description": "Crear una conversación primero. Las primeras restricciones duran solo en ese chat. Recordar/olvidar modifican gustos reales de Profile: edita el mensaje antes de enviar. Para comprobar separación entre chats, crea otro y consulta gustos.",
+      "item": [
+        {
+          "name": "Redirección fuera de moda",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Debe redirigir brevemente hacia moda, sin desarrollar la consulta.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Cual es la capital de Francia?\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Memoria presente',()=>pm.expect(pm.response.json().memory).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Restricción temporal - sin blanco",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "No cambia Profile. Guarda la restricción en memory.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Hoy quiero un outfit casual para universidad, sin blanco.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Memoria presente',()=>pm.expect(pm.response.json().memory).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Otra opción - conservar restricciones",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Conserva memory.excluded_colors, estilo y ocasión del chat.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Otra opcion por favor.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Memoria presente',()=>pm.expect(pm.response.json().memory).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Permitir blanco otra vez",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Quita la exclusión temporal WHITE; no elimina un gusto evitado en Profile.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Ya puedes usar blanco. Proponme otra opcion.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Memoria presente',()=>pm.expect(pm.response.json().memory).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar gustos permanentes",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Lee los gustos actuales de Profile, sin cambiarlos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Que gustos tienes guardados de mi?\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Memoria presente',()=>pm.expect(pm.response.json().memory).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recordar gusto - editar antes de enviar",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Modifica preferredStyles de Profile. No hace falta ejecutarlo para probar restricciones temporales.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Recuerda para futuras conversaciones que prefiero el estilo MINIMALIST.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Memoria presente',()=>pm.expect(pm.response.json().memory).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Olvidar gusto - editar antes de enviar",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Elimina MINIMALIST de preferredStyles. No ejecutar si quieres conservar ese gusto.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Olvida de mis preferencias guardadas el estilo MINIMALIST.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Memoria presente',()=>pm.expect(pm.response.json().memory).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 Tools de consulta",
+      "description": "Tools internas del chat, no endpoints nuevos. Crear conversación primero. get_outfit utiliza el ID de un outfit propio guardado en Recommendation.",
+      "item": [
+        {
+          "name": "search_wardrobe - buscar prendas negras",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Debe consultar Closet y mostrar sus nombres reales; recommendation es null.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Busca mis prendas negras disponibles y muestramelas, sin proponer outfits.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Solo consulta',()=>pm.expect(pm.response.json().recommendation).to.equal(null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get_outfit - consultar propuesta guardada",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Requiere recommendation_id de un outfit propio, obtenido al generar una propuesta. Se muestra una captura histórica y no se garantiza disponibilidad actual.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Consulta la propuesta guardada {{recommendation_id}} y muestrame sus prendas sin generar otra.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('recommendation_id')) throw new Error('Genera una propuesta propia primero para obtener su outfit ID.');",
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Solo consulta',()=>pm.expect(pm.response.json().recommendation).to.equal(null));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 RAG - Neon",
+      "description": "Solo se envía sesión IAM. Nunca configurar credenciales de Neon o NVIDIA en Postman. Sync no modifica prendas de Closet.",
+      "item": [
+        {
+          "name": "Sincronizar mi closet",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/wardrobe-index/sync",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "pm.test('Sin credenciales',()=>{const t=pm.response.text();pm.expect(t).not.to.include('postgresql://');pm.expect(t).not.to.include('nvapi-');});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar prendas por significado",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/wardrobe-index/search",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"polo negro discreto para salir\",\n  \"category\": \"TOP\",\n  \"limit\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "pm.test('Sin credenciales',()=>{const t=pm.response.text();pm.expect(t).not.to.include('postgresql://');pm.expect(t).not.to.include('nvapi-');});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat - buscar con RAG",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Escribe tu texto en message, en Body. Cada Send crea un turno nuevo. Conserva el mismo conversation_id para continuar el chat. Si falla el envío usa Reintentar ultimo mensaje; conserva el client_message_id y el texto originales.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Busca por significado algo discreto para salir, usando búsqueda semántica, y muéstrame las prendas.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar criterios de estilo y fuentes",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/style-knowledge/search",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"criterios para combinar streetwear de forma discreta\",\n  \"style\": \"STREETWEAR\",\n  \"limit\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Consulta el corpus revisado en Neon. Devuelve texto, fuente, licencia y similitud; no devuelve prendas ni vectores. Requiere sesión IAM."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Referencias consultadas', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) { const body = pm.response.json(); pm.test('Hasta tres fuentes atribuidas', () => { pm.expect(body.items.length).to.be.at.most(3); body.items.forEach(x => { pm.expect(x.license).to.eql('CC-BY-SA-4.0'); pm.expect(x.source_url).to.match(/^https:\\/\\/en\\.wikipedia\\.org\\/wiki\\//); }); }); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat - consultar criterios de estilo",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Escribe tu texto en message, en Body. Cada Send crea un turno nuevo. Conserva el mismo conversation_id para continuar el chat. Si falla el envío usa Reintentar ultimo mensaje; conserva el client_message_id y el texto originales.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Que criterios definen un estilo minimalista? Consulta search_style_knowledge y muestrame sus fuentes.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar ejemplos Polyvore",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/outfit-examples/search",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"camiseta con jean y botines\",\n  \"structure\": \"SEPARATES\",\n  \"limit\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Ejemplos históricos de train, no prendas propias. Máximo tres resultados; sus IDs no pueden utilizarse como garment_ids."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Ejemplos recuperados', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) { const body=pm.response.json(); pm.test('Solo train y hasta tres ejemplos', () => { pm.expect(body.items.length).to.be.at.most(3); body.items.forEach(x => { pm.expect(x.source_split).to.eql('train'); pm.expect(x.id).to.match(/^polyvore-/); pm.expect(x.structure).to.eql('SEPARATES'); }); }); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09 Web - FashionStylist",
+      "item": [
+        {
+          "name": "search_fashion_web - consultar inspiración y fuentes",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Ejecutar Crear conversación antes. El agente puede consultar search_fashion_web; muestra fuentes de FashionStylist y licencia CC-BY-NC-4.0. No es búsqueda web general ni tendencias en tiempo real.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Busca en la web ejemplos old money en FashionStylist y muéstrame sus fuentes, sin generar outfits.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}",
+                  "if(pm.response.code===200) pm.test('Solo consulta',()=>pm.expect(pm.response.json().recommendation).to.equal(null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "search_fashion_web - outfit con inspiración externa",
+          "request": {
+            "method": "POST",
+            "url": "{{recommendation_base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Consultar recommendation.web_references y garments. Solo se guardan combinaciones validadas con prendas propias. Puede aclarar si no hay prendas suficientes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Quiero un outfit casual sin blanco. Busca inspiración old money en la web con search_fashion_web y adáptala usando solo mi clóset.\",\n  \"client_message_id\": \"{{chat_client_message_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.environment.get('conversation_id')) throw new Error('Ejecuta Crear conversacion primero.');",
+                  "const id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.variables.set('chat_client_message_id', id);",
+                  "const body=JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+                  "pm.environment.set('last_client_message_id', id);",
+                  "pm.environment.set('last_chat_message', body.message);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "if(pm.response.code===200){",
+                  " const t=pm.response.json();",
+                  " pm.test('Respuesta de texto',()=>pm.expect(t.assistant_message).to.be.a('string').and.not.empty);",
+                  " pm.environment.set('last_client_message_id', t.client_message_id);",
+                  " pm.environment.set('last_chat_message', t.message);",
+                  " if(t.recommendation && t.recommendation.outfits.length){",
+                  "  pm.environment.set('recommendation_id', t.recommendation.outfits[0].id);",
+                  "  pm.environment.set('request_id', t.recommendation.request_id);",
+                  " }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

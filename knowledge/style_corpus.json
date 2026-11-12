@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "id": "mirage-monochrome-v1",
+      "title": "Paleta monocromática y tonos confirmados",
+      "content": "Una paleta monocromática se construye alrededor de un mismo matiz con variaciones de claridad y saturación. Guía editorial para combinar prendas: usar pocos colores puede dar continuidad visual, pero negro con azul no debe llamarse monocromático. Una etiqueta BLUE no confirma azul oscuro y GRAY no confirma gris oscuro. Para un pedido estrictamente oscuro, usar solo tonos confirmados por los metadatos; si no hay una combinación completa, pedir permiso para una aproximación. No inventar texturas para justificar contraste.",
+      "styles": [],
+      "source_url": "https://en.wikipedia.org/wiki/Monochromatic_color",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Wikipedia contributors; adaptación al español y guía editorial: Mirage. Cambios: resumen y aplicación a recomendaciones de prendas.",
+      "content_kind": "adaptation_with_editorial_guidance",
+      "revision": 1,
+      "reviewed_at": "2026-11-11T00:00:00Z",
+      "published": true
+    },
+    {
+      "id": "mirage-contrast-v1",
+      "title": "Contraste y acento de color",
+      "content": "Los colores complementarios se ubican en posiciones opuestas dentro de un modelo de círculo cromático; los pares cambian según el modelo. Guía editorial: un acento cromático puede destacar sobre una base discreta sin exigir que todas las prendas compitan por atención. No presentar un par de familias de color como una garantía universal de armonía. Si el usuario excluye un color o pide todo oscuro, esa restricción tiene prioridad sobre el contraste. Usar únicamente colores y detalles descritos en prendas disponibles.",
+      "styles": [],
+      "source_url": "https://en.wikipedia.org/wiki/Complementary_colors",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Wikipedia contributors; adaptación al español y guía editorial: Mirage. Cambios: resumen y aplicación a recomendaciones de prendas.",
+      "content_kind": "adaptation_with_editorial_guidance",
+      "revision": 1,
+      "reviewed_at": "2026-11-11T00:00:00Z",
+      "published": true
+    },
+    {
+      "id": "mirage-smart-casual-v1",
+      "title": "Smart casual según la ocasión",
+      "content": "Smart casual mezcla informalidad con elementos de presentación más cuidada y no tiene una definición universal: depende del lugar y del evento. Guía editorial: proponer una base casual con una pieza más sobria solo si sus metadatos lo permiten; explicar qué combinación de categorías y colores produce esa lectura. No garantizar que un outfit cumple el código de una entrevista o una ceremonia sin conocerlo. Preguntar por el grado de formalidad si cambia la elección; no asumir limpieza, planchado o ajuste a partir de una foto inexistente.",
+      "styles": [
+        "CASUAL",
+        "CLASSIC",
+        "ELEGANT"
+      ],
+      "source_url": "https://en.wikipedia.org/wiki/Smart_casual",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Wikipedia contributors; adaptación al español y guía editorial: Mirage. Cambios: resumen y aplicación a recomendaciones de prendas.",
+      "content_kind": "adaptation_with_editorial_guidance",
+      "revision": 1,
+      "reviewed_at": "2026-11-11T00:00:00Z",
+      "published": true
+    },
+    {
+      "id": "mirage-streetwear-v1",
+      "title": "Streetwear con prendas del propio clóset",
+      "content": "Streetwear es una corriente de vestir casual vinculada, entre otras influencias, con cultura urbana, skate y ropa deportiva. Guía editorial: partir de prendas etiquetadas como STREETWEAR o de elementos casuales realmente descritos; una camiseta gráfica o unas zapatillas pueden orientar una lectura urbana cuando constan en el inventario. No exigir marcas exclusivas ni compras nuevas. No afirmar que una prenda es oversized, técnica o de edición limitada si no existe ese dato. Si se pide algo distinto, cambiar una combinación real sin incumplir exclusiones.",
+      "styles": [
+        "STREETWEAR",
+        "CASUAL"
+      ],
+      "source_url": "https://en.wikipedia.org/wiki/Streetwear",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Wikipedia contributors; adaptación al español y guía editorial: Mirage. Cambios: resumen y aplicación a recomendaciones de prendas.",
+      "content_kind": "adaptation_with_editorial_guidance",
+      "revision": 1,
+      "reviewed_at": "2026-11-11T00:00:00Z",
+      "published": true
+    },
+    {
+      "id": "mirage-capsule-v1",
+      "title": "Armario cápsula y combinaciones reutilizables",
+      "content": "El concepto de armario cápsula propone un conjunto reducido de prendas que puede combinarse de varias maneras. Guía editorial: reutilizar una pieza base no equivale a repetir todo el outfit. Para otra opción, cambiar al menos una prenda y comprobar que la combinación completa no coincide con las últimas propuestas. Priorizar versatilidad y prendas existentes; no interpretar la idea de cápsula como una obligación de comprar o descartar ropa. Reconocer cuando los candidatos disponibles no permiten otra alternativa.",
+      "styles": [
+        "CASUAL",
+        "CLASSIC"
+      ],
+      "source_url": "https://en.wikipedia.org/wiki/Capsule_wardrobe",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Wikipedia contributors; adaptación al español y guía editorial: Mirage. Cambios: resumen y aplicación a recomendaciones de prendas.",
+      "content_kind": "adaptation_with_editorial_guidance",
+      "revision": 1,
+      "reviewed_at": "2026-11-11T00:00:00Z",
+      "published": true
+    },
+    {
+      "id": "mirage-minimalist-v1",
+      "title": "Minimalismo como criterio editorial",
+      "content": "El armario cápsula sirve como referencia para reducir decisiones y reutilizar combinaciones. Aplicación editorial de Mirage al minimalismo: favorecer una paleta acotada y pocas piezas protagonistas, usando prendas etiquetadas como MINIMALIST o cuyos atributos conocidos encajen. No confundir minimalismo con vestir obligatoriamente de negro, llevar marcas costosas o carecer de personalidad. Si se desea un punto llamativo, aprovechar un detalle descrito y mantener el resto sencillo, sin inventar cortes o materiales.",
+      "styles": [
+        "MINIMALIST",
+        "CASUAL"
+      ],
+      "source_url": "https://en.wikipedia.org/wiki/Capsule_wardrobe",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Wikipedia contributors; adaptación al español y guía editorial: Mirage. Cambios: resumen y aplicación a recomendaciones de prendas.",
+      "content_kind": "adaptation_with_editorial_guidance",
+      "revision": 1,
+      "reviewed_at": "2026-11-11T00:00:00Z",
+      "published": true
+    },
+    {
+      "id": "mirage-layers-v1",
+      "title": "Capas: posibilidades y límites",
+      "content": "Vestir por capas consiste en superponer prendas por estilo o por abrigo. Guía editorial: explicar la posibilidad de una capa exterior solo cuando exista esa prenda y el producto admita incluirla. La versión actual de Mirage genera TOP más BOTTOM más FOOTWEAR, o ONE_PIECE más FOOTWEAR; una referencia sobre capas no autoriza añadir categorías exteriores al resultado. No prometer protección térmica, impermeabilidad o comodidad sin información suficiente sobre material, clima y actividad.",
+      "styles": [
+        "CASUAL",
+        "SPORT"
+      ],
+      "source_url": "https://en.wikipedia.org/wiki/Layered_clothing",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Wikipedia contributors; adaptación al español y guía editorial: Mirage. Cambios: resumen y aplicación a recomendaciones de prendas.",
+      "content_kind": "adaptation_with_editorial_guidance",
+      "revision": 1,
+      "reviewed_at": "2026-11-11T00:00:00Z",
+      "published": true
+    },
+    {
+      "id": "mirage-dark-accent-v1",
+      "title": "Oscuro pero llamativo sin inventar atributos",
+      "content": "Una composición de un solo matiz puede variar en claridad; oscuro no significa automáticamente que todas las prendas tengan el mismo tono. Aplicación editorial: para un outfit oscuro pero llamativo, un detalle documentado o una combinación de formas conocidas puede aportar interés sin añadir colores excluidos. Si solo hay familias de color y falta un inferior oscuro confirmado, no inventar un tono negro ni una textura; explicar el límite y pedir permiso para una aproximación. El criterio estético no sustituye restricciones del usuario.",
+      "styles": [],
+      "source_url": "https://en.wikipedia.org/wiki/Monochromatic_color",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Wikipedia contributors; adaptación al español y guía editorial: Mirage. Cambios: resumen y aplicación a recomendaciones de prendas.",
+      "content_kind": "adaptation_with_editorial_guidance",
+      "revision": 1,
+      "reviewed_at": "2026-11-11T00:00:00Z",
+      "published": true
+    }
+  ]
+}

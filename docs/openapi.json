@@ -1,0 +1,3526 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Mirage Recommendation API",
+    "version": "0.9.0",
+    "description": "Recomendaciones y conversaciones con IAM, Profile y Nemotron. En live, RAG recupera referencias de moda publicadas en Neon antes de candidatos privados de Digital Closet y revalida prendas antes de persistir. Memoria por chat y gustos explícitos en Profile. Tools protegidas: search_wardrobe, get_outfit y search_style_knowledge. Las referencias son orientativas y no pueden habilitar prendas o categorías nuevas. style_references registra lo recuperado, no demuestra uso por el modelo. Solo Recommendation conecta directamente con Neon. Recupera proyecciones históricas de Polyvore del split train después de conocer las categorías disponibles. Ejemplos externos no son prendas del usuario ni etiquetas de calidad. La tool search_fashion_web consulta bajo demanda texto de FashionStylist (2026), con fuentes verificadas, caché y licencia CC-BY-NC-4.0. Solo inspiración externa; no es navegación libre ni un feed de tendencias. web_references conserva la procedencia en outfits del chat."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Mismo host y puerto que esta documentación"
+    }
+  ],
+  "security": [],
+  "tags": [
+    {
+      "name": "Estado",
+      "description": "Estado del proceso y capacidades habilitadas."
+    },
+    {
+      "name": "Recomendaciones",
+      "description": "Demo de combinaciones base por categorías."
+    },
+    {
+      "name": "Conversaciones",
+      "description": "Chat propio con memoria de mensajes y outfits."
+    },
+    {
+      "name": "Índice vectorial",
+      "description": "Sincronización y búsqueda semántica privadas por usuario."
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Estado"
+        ],
+        "operationId": "getHealth",
+        "summary": "Consultar estado y capacidades",
+        "description": "Disponible en demo y disabled. Un estado ok indica que el proceso funciona, no que las integraciones externas estén listas.",
+        "responses": {
+          "200": {
+            "description": "Estado del proceso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                },
+                "example": {
+                  "status": "ok",
+                  "service": "recommendation-service",
+                  "mode": "demo",
+                  "recommendations_ready": true,
+                  "engine": "category_rules",
+                  "rag_enabled": false,
+                  "llm_enabled": false,
+                  "authentication": "iam"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/recommendations": {
+      "post": {
+        "tags": [
+          "Recomendaciones"
+        ],
+        "operationId": "generateRecommendation",
+        "summary": "Generar y guardar outfits con reglas o Nemotron",
+        "description": "Valida IAM y consulta Profile. En live lista todas las páginas de Digital Closet con el Bearer del usuario; demo utiliza fixtures. Resuelve candidatos antes del modelo y prendas elegidas después. Un cambio de disponibilidad, revisión o metadatos devuelve 409 WARDROBE_CHANGED sin guardar. La comprobación no reserva prendas ni es una transacción entre bases. Límite inicial: 100 prendas elegibles y 1000 listadas; sin recorte silencioso ni fallback a demo. Valida IAM y consulta Profile. RECOMMENDATION_ENGINE=category_rules usa combinaciones base; nemotron llama a NVIDIA con prendas ficticias elegibles, ocasion y preferencias. El modelo solo puede utilizar los IDs permitidos. El backend rechaza IDs desconocidos, duplicados, categorias incompletas, explicaciones invalidas y respuestas truncadas antes de guardar. No hay fallback silencioso si falla el modelo. Sin prendas suficientes no se llama a NVIDIA. Sin RAG. Este POST genera propuestas aisladas; para chat con memoria usar /api/v1/conversations/{id}/messages. El POST requiere demo y autenticacion. Body maximo: 16 KiB.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationRequest"
+              },
+              "examples": {
+                "casual": {
+                  "summary": "Outfits casuales",
+                  "value": {
+                    "occasion": "Universidad",
+                    "style": "CASUAL",
+                    "excluded_garments": [],
+                    "max_results": 3
+                  }
+                },
+                "sin_calzado": {
+                  "summary": "Excluir el único calzado disponible: devuelve lista vacía",
+                  "value": {
+                    "occasion": "Universidad",
+                    "style": "CASUAL",
+                    "excluded_garments": [
+                      "10000000-0000-4000-8000-000000000003"
+                    ],
+                    "max_results": 3
+                  }
+                },
+                "profile": {
+                  "summary": "Usar estilos y colores guardados en Profile",
+                  "value": {
+                    "occasion": "Universidad",
+                    "max_results": 3
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Propuestas demo, o lista vacía si no hay suficientes prendas elegibles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationResponse"
+                },
+                "examples": {
+                  "generated": {
+                    "summary": "Combinación válida",
+                    "value": {
+                      "mode": "demo",
+                      "engine": "category_rules",
+                      "persisted": true,
+                      "occasion": "Universidad",
+                      "status": "GENERATED",
+                      "outfits": [
+                        {
+                          "garment_ids": [
+                            "10000000-0000-4000-8000-000000000001",
+                            "10000000-0000-4000-8000-000000000002",
+                            "10000000-0000-4000-8000-000000000003"
+                          ],
+                          "explanation": "Combinacion base con prendas demo disponibles y preferencias de Profile; no evalua la ocasion ni compatibilidad visual.",
+                          "id": "30000000-0000-4000-8000-000000000001",
+                          "request_id": "40000000-0000-4000-8000-000000000001",
+                          "created_at": "2026-11-10T23:30:00Z",
+                          "is_favorite": false,
+                          "status": "GENERATED",
+                          "rejected_at": null,
+                          "rejection_reason": null
+                        }
+                      ],
+                      "user_id": "20000000-0000-4000-8000-000000000001",
+                      "profile_preferences": {
+                        "preferred_styles": [],
+                        "preferred_colors": [],
+                        "avoided_colors": [],
+                        "preferred_categories": []
+                      },
+                      "request_id": "40000000-0000-4000-8000-000000000001",
+                      "created_at": "2026-11-10T23:30:00Z",
+                      "parameters": {
+                        "occasion": "Universidad",
+                        "style": "CASUAL",
+                        "max_results": 3
+                      }
+                    }
+                  },
+                  "insufficient": {
+                    "summary": "Sin prendas suficientes",
+                    "value": {
+                      "mode": "demo",
+                      "engine": "category_rules",
+                      "persisted": true,
+                      "occasion": "Universidad",
+                      "status": "INSUFFICIENT_GARMENTS",
+                      "outfits": [],
+                      "user_id": "20000000-0000-4000-8000-000000000001",
+                      "profile_preferences": {
+                        "preferred_styles": [],
+                        "preferred_colors": [],
+                        "avoided_colors": [],
+                        "preferred_categories": []
+                      },
+                      "request_id": "40000000-0000-4000-8000-000000000001",
+                      "created_at": "2026-11-10T23:30:00Z",
+                      "parameters": {
+                        "occasion": "Universidad",
+                        "style": "CASUAL",
+                        "max_results": 3
+                      }
+                    }
+                  },
+                  "nemotron": {
+                    "summary": "Ejemplo del motor Nemotron con prendas ficticias",
+                    "value": {
+                      "mode": "demo",
+                      "engine": "nemotron",
+                      "persisted": true,
+                      "occasion": "Universidad",
+                      "status": "GENERATED",
+                      "outfits": [
+                        {
+                          "garment_ids": [
+                            "10000000-0000-4000-8000-000000000001",
+                            "10000000-0000-4000-8000-000000000002",
+                            "10000000-0000-4000-8000-000000000003"
+                          ],
+                          "explanation": "El polo blanco, el jean azul y las zapatillas blancas forman una combinacion casual para ir a clases.",
+                          "id": "30000000-0000-4000-8000-000000000001",
+                          "request_id": "40000000-0000-4000-8000-000000000001",
+                          "created_at": "2026-11-10T23:30:00Z",
+                          "is_favorite": false,
+                          "status": "GENERATED",
+                          "rejected_at": null,
+                          "rejection_reason": null
+                        }
+                      ],
+                      "user_id": "20000000-0000-4000-8000-000000000001",
+                      "profile_preferences": {
+                        "preferred_styles": [],
+                        "preferred_colors": [],
+                        "avoided_colors": [],
+                        "preferred_categories": []
+                      },
+                      "request_id": "40000000-0000-4000-8000-000000000001",
+                      "created_at": "2026-11-10T23:30:00Z",
+                      "parameters": {
+                        "occasion": "Universidad",
+                        "style": "CASUAL",
+                        "max_results": 3
+                      },
+                      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+                      "llm_used": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body JSON inválido, campos desconocidos o parámetros incorrectos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "INVALID_ARGUMENT",
+                    "message": "Expected occasion (1-120 bytes), optional style, up to 100 unique UUID exclusions and max_results (1-3)."
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "El framework rechaza cuerpos mayores de 16 KiB; no se garantiza un cuerpo JSON."
+          },
+          "415": {
+            "description": "Se requiere Content-Type: application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "message": "Use Content-Type: application/json."
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IAM, Profile, Closet, modelo o persistencia no disponibles/configurados. Páginas/resoluciones incompletas o malformadas de Closet también fallan sin guardar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "disabled": {
+                    "value": {
+                      "error": {
+                        "code": "NOT_CONFIGURED",
+                        "message": "Real integrations are not configured. Local demo requires RECOMMENDATION_MODE=demo."
+                      }
+                    }
+                  },
+                  "wardrobe": {
+                    "value": {
+                      "error": {
+                        "code": "WARDROBE_UNAVAILABLE",
+                        "message": "Could not read the wardrobe."
+                      }
+                    }
+                  },
+                  "iam": {
+                    "summary": "No se pudo validar la sesión; acceso denegado por dependencia no disponible",
+                    "value": {
+                      "error": {
+                        "code": "IAM_UNAVAILABLE",
+                        "message": "Could not validate the session with IAM. Try again later."
+                      }
+                    }
+                  },
+                  "profile": {
+                    "summary": "Profile no disponible o respuesta inválida",
+                    "value": {
+                      "error": {
+                        "code": "PROFILE_UNAVAILABLE",
+                        "message": "Could not retrieve preferences from Profile. Try again later."
+                      }
+                    }
+                  },
+                  "history": {
+                    "value": {
+                      "error": {
+                        "code": "HISTORY_UNAVAILABLE",
+                        "message": "Could not access recommendation history."
+                      }
+                    }
+                  },
+                  "model_not_configured": {
+                    "value": {
+                      "error": {
+                        "code": "MODEL_NOT_CONFIGURED",
+                        "message": "Could not generate a valid outfit with the configured model."
+                      }
+                    }
+                  },
+                  "model_unavailable": {
+                    "value": {
+                      "error": {
+                        "code": "MODEL_UNAVAILABLE",
+                        "message": "Could not generate a valid outfit with the configured model."
+                      }
+                    }
+                  },
+                  "model_rate_limited": {
+                    "value": {
+                      "error": {
+                        "code": "MODEL_RATE_LIMITED",
+                        "message": "Could not generate a valid outfit with the configured model."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente/malformado, inválido, expirado o sesión rechazada por IAM. No se devuelve información privada de IAM.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Desafío de autenticación Bearer.",
+                "example": "Bearer"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "A valid Bearer access token is required."
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "The access token or session is invalid."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Perfil requerido, conflicto del chat o WARDROBE_CHANGED. Si cambia el armario, no se guarda ninguna propuesta ni medio turno. Consultar Closet y solicitar otra propuesta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "WARDROBE_CHANGED",
+                    "message": "The wardrobe changed during generation. Nothing was saved; request a new proposal."
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "El modelo devolvio JSON o un outfit invalido; no se persiste.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "MODEL_INVALID_RESPONSE",
+                    "message": "Could not generate a valid outfit with the configured model."
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "WARDROBE_LIMIT_EXCEEDED: más de 100 prendas elegibles, 1000 listadas o límite de páginas excedido; no se guarda nada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "Recomendaciones"
+        ],
+        "operationId": "listRecommendations",
+        "summary": "Consultar historial propio",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Outfits propios ordenados por created_at e id descendentes. Paginación por cursor estable para registros nuevos; favoritos pueden cambiar entre páginas. Incluye propuestas rechazadas. Funciona incluso si la generación está disabled y no depende de Profile.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "favorite",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Omitir para todos; true para favoritos; false para no favoritos."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de propuestas propias.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "mode": "demo",
+                      "engine": "category_rules",
+                      "persisted": true,
+                      "occasion": "Universidad",
+                      "status": "GENERATED",
+                      "user_id": "20000000-0000-4000-8000-000000000001",
+                      "profile_preferences": {
+                        "preferred_styles": [],
+                        "preferred_colors": [],
+                        "avoided_colors": [],
+                        "preferred_categories": []
+                      },
+                      "request_id": "40000000-0000-4000-8000-000000000001",
+                      "created_at": "2026-11-10T23:30:00Z",
+                      "parameters": {
+                        "occasion": "Universidad",
+                        "style": "CASUAL",
+                        "max_results": 3
+                      },
+                      "garment_ids": [
+                        "10000000-0000-4000-8000-000000000001",
+                        "10000000-0000-4000-8000-000000000002",
+                        "10000000-0000-4000-8000-000000000003"
+                      ],
+                      "explanation": "Combinacion base con prendas demo disponibles y preferencias de Profile; no evalua la ocasion ni compatibilidad visual.",
+                      "id": "30000000-0000-4000-8000-000000000001",
+                      "is_favorite": false,
+                      "rejected_at": null,
+                      "rejection_reason": null
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros o body inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "INVALID_ARGUMENT",
+                    "message": "Invalid recommendation parameters."
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente/malformado, inválido, expirado o sesión rechazada por IAM. No se devuelve información privada de IAM.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Desafío de autenticación Bearer.",
+                "example": "Bearer"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "A valid Bearer access token is required."
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "The access token or session is invalid."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IAM o persistencia no disponibles; no se concede acceso por defecto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "HISTORY_UNAVAILABLE",
+                    "message": "Could not access recommendation history."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{id}": {
+      "get": {
+        "tags": [
+          "Recomendaciones"
+        ],
+        "operationId": "getRecommendation",
+        "summary": "Consultar una propuesta propia",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID de un outfit, no el request_id de la solicitud."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Propuesta persistida con contexto de generación y feedback.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationRecord"
+                },
+                "example": {
+                  "mode": "demo",
+                  "engine": "category_rules",
+                  "persisted": true,
+                  "occasion": "Universidad",
+                  "status": "GENERATED",
+                  "user_id": "20000000-0000-4000-8000-000000000001",
+                  "profile_preferences": {
+                    "preferred_styles": [],
+                    "preferred_colors": [],
+                    "avoided_colors": [],
+                    "preferred_categories": []
+                  },
+                  "request_id": "40000000-0000-4000-8000-000000000001",
+                  "created_at": "2026-11-10T23:30:00Z",
+                  "parameters": {
+                    "occasion": "Universidad",
+                    "style": "CASUAL",
+                    "max_results": 3
+                  },
+                  "garment_ids": [
+                    "10000000-0000-4000-8000-000000000001",
+                    "10000000-0000-4000-8000-000000000002",
+                    "10000000-0000-4000-8000-000000000003"
+                  ],
+                  "explanation": "Combinacion base con prendas demo disponibles y preferencias de Profile; no evalua la ocasion ni compatibilidad visual.",
+                  "id": "30000000-0000-4000-8000-000000000001",
+                  "is_favorite": false,
+                  "rejected_at": null,
+                  "rejection_reason": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros o body inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "INVALID_ARGUMENT",
+                    "message": "Invalid recommendation parameters."
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente/malformado, inválido, expirado o sesión rechazada por IAM. No se devuelve información privada de IAM.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Desafío de autenticación Bearer.",
+                "example": "Bearer"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "A valid Bearer access token is required."
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "The access token or session is invalid."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IAM o persistencia no disponibles; no se concede acceso por defecto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "HISTORY_UNAVAILABLE",
+                    "message": "Could not access recommendation history."
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Propuesta inexistente o perteneciente a otro usuario; ambas responden igual.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "RECOMMENDATION_NOT_FOUND",
+                    "message": "Recommendation not found."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{id}/favorite": {
+      "post": {
+        "tags": [
+          "Recomendaciones"
+        ],
+        "operationId": "favoriteRecommendation",
+        "summary": "Marcar o quitar favorito",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID de un outfit, no el request_id de la solicitud."
+          }
+        ],
+        "description": "Body vacío o {} marca favorito; favorite:false lo quita. Repetir la misma acción es idempotente. Una propuesta rechazada no puede marcarse favorita: devuelve 409.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FavoriteRequest"
+              },
+              "examples": {
+                "mark": {
+                  "value": {
+                    "favorite": true
+                  }
+                },
+                "remove": {
+                  "value": {
+                    "favorite": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Propuesta actualizada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros o body inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "INVALID_ARGUMENT",
+                    "message": "Invalid recommendation parameters."
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente/malformado, inválido, expirado o sesión rechazada por IAM. No se devuelve información privada de IAM.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Desafío de autenticación Bearer.",
+                "example": "Bearer"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "A valid Bearer access token is required."
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "The access token or session is invalid."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IAM o persistencia no disponibles; no se concede acceso por defecto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "HISTORY_UNAVAILABLE",
+                    "message": "Could not access recommendation history."
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Propuesta inexistente o perteneciente a otro usuario; ambas responden igual.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "RECOMMENDATION_NOT_FOUND",
+                    "message": "Recommendation not found."
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Propuesta ya rechazada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "RECOMMENDATION_REJECTED",
+                    "message": "A rejected recommendation cannot be marked as favorite."
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Se requiere Content-Type: application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "message": "Use Content-Type: application/json."
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "El framework rechaza cuerpos mayores de 16 KiB; no se garantiza un cuerpo JSON."
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{id}/reject": {
+      "post": {
+        "tags": [
+          "Recomendaciones"
+        ],
+        "operationId": "rejectRecommendation",
+        "summary": "Rechazar una propuesta",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID de un outfit, no el request_id de la solicitud."
+          }
+        ],
+        "description": "Registra rechazo y motivo opcional; quita favorito. Repetir el mismo rechazo conserva rejected_at; un motivo nuevo sustituye al anterior. No borra la propuesta ni entrena un modelo automáticamente.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectRequest"
+              },
+              "example": {
+                "reason": "Prefiero otra combinación"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Propuesta rechazada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros o body inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "INVALID_ARGUMENT",
+                    "message": "Invalid recommendation parameters."
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente/malformado, inválido, expirado o sesión rechazada por IAM. No se devuelve información privada de IAM.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Desafío de autenticación Bearer.",
+                "example": "Bearer"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "A valid Bearer access token is required."
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "The access token or session is invalid."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IAM o persistencia no disponibles; no se concede acceso por defecto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "HISTORY_UNAVAILABLE",
+                    "message": "Could not access recommendation history."
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Propuesta inexistente o perteneciente a otro usuario; ambas responden igual.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "RECOMMENDATION_NOT_FOUND",
+                    "message": "Recommendation not found."
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Se requiere Content-Type: application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "message": "Use Content-Type: application/json."
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "El framework rechaza cuerpos mayores de 16 KiB; no se garantiza un cuerpo JSON."
+          }
+        }
+      }
+    },
+    "/api/v1/conversations": {
+      "post": {
+        "tags": [
+          "Conversaciones"
+        ],
+        "operationId": "createConversation",
+        "summary": "Crear conversación",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Parámetros o body inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente/malformado, inválido, expirado o sesión rechazada por IAM. No se devuelve información privada de IAM.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Desafío de autenticación Bearer.",
+                "example": "Bearer"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "A valid Bearer access token is required."
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "The access token or session is invalid."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IAM o persistencia no disponibles; no se concede acceso por defecto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Propuesta inexistente o perteneciente a otro usuario; ambas responden igual.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ID reutilizado con otro texto, chat lleno o versión modificada durante la generación. Recargar el chat.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Respuesta inválida del modelo; no se guarda el turno.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Resultado de la conversación propia.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                },
+                "example": {
+                  "id": "50000000-0000-4000-8000-000000000001",
+                  "user_id": "20000000-0000-4000-8000-000000000001",
+                  "title": "Universidad",
+                  "version": 0,
+                  "created_at": "2026-11-11T08:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreate"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Conversaciones"
+        ],
+        "operationId": "listConversations",
+        "summary": "Listar conversaciones propias",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Parámetros o body inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente/malformado, inválido, expirado o sesión rechazada por IAM. No se devuelve información privada de IAM.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Desafío de autenticación Bearer.",
+                "example": "Bearer"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "A valid Bearer access token is required."
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "The access token or session is invalid."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IAM o persistencia no disponibles; no se concede acceso por defecto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Propuesta inexistente o perteneciente a otro usuario; ambas responden igual.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ID reutilizado con otro texto, chat lleno o versión modificada durante la generación. Recargar el chat.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Respuesta inválida del modelo; no se guarda el turno.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Resultado de la conversación propia.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "50000000-0000-4000-8000-000000000001",
+                      "user_id": "20000000-0000-4000-8000-000000000001",
+                      "title": "Universidad",
+                      "version": 0,
+                      "created_at": "2026-11-11T08:00:00Z"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/conversations/{id}": {
+      "get": {
+        "tags": [
+          "Conversaciones"
+        ],
+        "operationId": "getConversation",
+        "summary": "Consultar mensajes y outfits en orden",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Parámetros o body inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente/malformado, inválido, expirado o sesión rechazada por IAM. No se devuelve información privada de IAM.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Desafío de autenticación Bearer.",
+                "example": "Bearer"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "A valid Bearer access token is required."
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "The access token or session is invalid."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IAM o persistencia no disponibles; no se concede acceso por defecto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Propuesta inexistente o perteneciente a otro usuario; ambas responden igual.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ID reutilizado con otro texto, chat lleno o versión modificada durante la generación. Recargar el chat.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Respuesta inválida del modelo; no se guarda el turno.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Resultado de la conversación propia.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                },
+                "example": {
+                  "id": "50000000-0000-4000-8000-000000000001",
+                  "user_id": "20000000-0000-4000-8000-000000000001",
+                  "title": "Universidad",
+                  "version": 1,
+                  "created_at": "2026-11-11T08:00:00Z",
+                  "turns": [
+                    {
+                      "conversation_id": "50000000-0000-4000-8000-000000000001",
+                      "client_message_id": "60000000-0000-4000-8000-000000000001",
+                      "position": 1,
+                      "message": "Hola",
+                      "assistant_message": "Hola, para que ocasion buscas un outfit?",
+                      "recommendation": null,
+                      "created_at": "2026-11-11T08:00:01Z",
+                      "memory": {
+                        "excluded_colors": [],
+                        "dark_only": false,
+                        "style": "",
+                        "occasion": "",
+                        "profile_updated": false
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/conversations/{id}/messages": {
+      "post": {
+        "tags": [
+          "Conversaciones"
+        ],
+        "operationId": "sendConversationMessage",
+        "summary": "Conversar con Nemotron",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Parámetros o body inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente/malformado, inválido, expirado o sesión rechazada por IAM. No se devuelve información privada de IAM.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Desafío de autenticación Bearer.",
+                "example": "Bearer"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "A valid Bearer access token is required."
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHENTICATED",
+                        "message": "The access token or session is invalid."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IAM, Profile, Closet, modelo o persistencia no disponibles/configurados. Páginas/resoluciones incompletas o malformadas de Closet también fallan sin guardar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Propuesta inexistente o perteneciente a otro usuario; ambas responden igual.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Perfil requerido, conflicto del chat o WARDROBE_CHANGED. Si cambia el armario, no se guarda ninguna propuesta ni medio turno. Consultar Closet y solicitar otra propuesta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "WARDROBE_CHANGED",
+                    "message": "The wardrobe changed during generation. Nothing was saved; request a new proposal."
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Respuesta inválida del modelo; no se guarda el turno.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Resultado de la conversación propia.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationTurn"
+                },
+                "example": {
+                  "conversation_id": "50000000-0000-4000-8000-000000000001",
+                  "client_message_id": "60000000-0000-4000-8000-000000000001",
+                  "position": 1,
+                  "message": "Hola",
+                  "assistant_message": "Hola, para que ocasion buscas un outfit?",
+                  "recommendation": null,
+                  "created_at": "2026-11-11T08:00:01Z",
+                  "memory": {
+                    "excluded_colors": [],
+                    "dark_only": false,
+                    "style": "",
+                    "occasion": "",
+                    "profile_updated": false
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "WARDROBE_LIMIT_EXCEEDED: más de 100 prendas elegibles, 1000 listadas o límite de páginas excedido; no se guarda nada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationMessage"
+              }
+            }
+          }
+        },
+        "description": "Valida IAM y consulta Profile. En live lista todas las páginas de Digital Closet con el Bearer del usuario; demo utiliza fixtures. Resuelve candidatos antes del modelo y prendas elegidas después. Un cambio de disponibilidad, revisión o metadatos devuelve 409 WARDROBE_CHANGED sin guardar. La comprobación no reserva prendas ni es una transacción entre bases. Límite inicial: 100 prendas elegibles y 1000 listadas; sin recorte silencioso ni fallback a demo. Responde con texto y outfits opcionales. Cada turno se guarda de forma atómica. Repetir client_message_id con el mismo texto recupera el turno existente sin llamar al modelo. Máximo 20 turnos. Errores no guardan medio turno. Usa prendas demo y preferencias; no ejecuta feedback ni genera imágenes. Conserva colores excluidos, requisito oscuro, estilo y ocasión hasta que el usuario los cambie. Redirige temas ajenos a moda. Permite consultar gustos permanentes y cambiarlos explícitamente en IAM/Profile. Las restricciones temporales no se guardan como gustos permanentes. Un turno confirmado se reintenta con el mismo client_message_id sin repetir el cambio de Profile. Si IAM no confirma el PUT, devuelve 503 PROFILE_UPDATE_UNCONFIRMED: consultar gustos antes de reintentar. Si IAM actualizó pero el turno no pudo guardarse, devuelve PROFILE_UPDATED_CHAT_NOT_SAVED con el estado HTTP del almacenamiento. Profile usa PUT sin control de versión: cambios simultáneos pueden competir. Puede consultar prendas disponibles por filtros exactos y outfits propios guardados mediante tools internas. Una consulta exitosa por mensaje; hasta tres intentos de tool, sin llamadas paralelas ni consultas idénticas repetidas. Las consultas usan el usuario derivado de IAM, no aceptan user_id ni destinos HTTP y no crean outfits. get_outfit muestra una captura histórica. 401 si la tool pierde autorización; 503 TOOL_UNAVAILABLE si falla una dependencia; 502 TOOL_LIMIT_EXCEEDED al agotar el presupuesto o repetir una consulta. Fase de consulta y respuesta JSON Schema separadas; puede aumentar la latencia. Sin embeddings ni RAG."
+      }
+    },
+    "/api/v1/wardrobe-index/sync": {
+      "post": {
+        "tags": [
+          "Índice vectorial"
+        ],
+        "operationId": "syncWardrobeIndex",
+        "summary": "Sincronizar mis prendas con Neon",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "INVALID_ARGUMENT: campos desconocidos o inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: IAM o Closet rechazó la sesión.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INDEX_BUSY, INDEX_CHANGED o WARDROBE_CHANGED. Reintentar tras recargar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INDEX_WARDROBE_LIMIT: máximo 100 prendas por sincronización; no guarda un índice parcial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "RAG_NOT_CONFIGURED, EMBEDDING_UNAVAILABLE, VECTOR_STORE_UNAVAILABLE, WARDROBE_UNAVAILABLE o INDEX_TIMEOUT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Operación completada. Nunca devuelve vectores ni credenciales.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VectorSyncResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Solo backend: usuario derivado de IAM, RLS transaccional en Neon y SQL parametrizado. La sincronización lee dos snapshots completos de Closet, genera embeddings solo si cambia el documento, serializa por usuario y guarda/pruna atómicamente con control de concurrencia. Máximo 100 prendas, lotes de 8 y presupuesto de 90 segundos comprobado entre pasos. La búsqueda sincroniza primero, combina filtros exactos con similitud y revalida los resultados mediante Closet resolve. No hay fallback silencioso a búsqueda literal. No modifica las prendas originales ni consulta una base desde el frontend."
+      }
+    },
+    "/api/v1/wardrobe-index/search": {
+      "post": {
+        "tags": [
+          "Índice vectorial"
+        ],
+        "operationId": "searchWardrobeIndex",
+        "summary": "Buscar mis prendas por significado",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VectorSearchRequest"
+              },
+              "example": {
+                "query": "polo negro discreto para salir",
+                "category": "TOP",
+                "limit": 3
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "INVALID_ARGUMENT: campos desconocidos o inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: IAM o Closet rechazó la sesión.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INDEX_BUSY, INDEX_CHANGED o WARDROBE_CHANGED. Reintentar tras recargar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INDEX_WARDROBE_LIMIT: máximo 100 prendas por sincronización; no guarda un índice parcial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "RAG_NOT_CONFIGURED, EMBEDDING_UNAVAILABLE, VECTOR_STORE_UNAVAILABLE, WARDROBE_UNAVAILABLE o INDEX_TIMEOUT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Operación completada. Nunca devuelve vectores ni credenciales.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VectorSearchResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Solo backend: usuario derivado de IAM, RLS transaccional en Neon y SQL parametrizado. La sincronización lee dos snapshots completos de Closet, genera embeddings solo si cambia el documento, serializa por usuario y guarda/pruna atómicamente con control de concurrencia. Máximo 100 prendas, lotes de 8 y presupuesto de 90 segundos comprobado entre pasos. La búsqueda sincroniza primero, combina filtros exactos con similitud y revalida los resultados mediante Closet resolve. No hay fallback silencioso a búsqueda literal. No modifica las prendas originales ni consulta una base desde el frontend."
+      }
+    },
+    "/api/v1/style-knowledge/search": {
+      "post": {
+        "tags": [
+          "Índice vectorial"
+        ],
+        "operationId": "searchStyleKnowledge",
+        "summary": "Consultar referencias de moda publicadas",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleKnowledgeSearchRequest"
+              },
+              "example": {
+                "query": "criterios para un outfit streetwear discreto",
+                "style": "STREETWEAR",
+                "limit": 3
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "INVALID_ARGUMENT: campos desconocidos o inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: IAM o Closet rechazó la sesión.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INDEX_BUSY, INDEX_CHANGED o WARDROBE_CHANGED. Reintentar tras recargar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INDEX_WARDROBE_LIMIT: máximo 100 prendas por sincronización; no guarda un índice parcial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "RAG_NOT_CONFIGURED, EMBEDDING_UNAVAILABLE, VECTOR_STORE_UNAVAILABLE, WARDROBE_UNAVAILABLE o INDEX_TIMEOUT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Operación completada. Nunca devuelve vectores ni credenciales.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleKnowledgeSearchResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Solo lectura con sesión IAM. Recupera hasta tres fragmentos del corpus revisado mediante embeddings. El rol de aplicación no puede editar el corpus. No descarga URLs. El filtro style incluye referencias generales sin etiquetas. La similitud no es garantía de relevancia."
+      }
+    },
+    "/api/v1/outfit-examples/search": {
+      "post": {
+        "tags": [
+          "Índice vectorial"
+        ],
+        "operationId": "searchOutfitExamples",
+        "summary": "Consultar ejemplos básicos de Polyvore",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutfitExampleSearchRequest"
+              },
+              "example": {
+                "query": "camiseta con jean y botines",
+                "structure": "SEPARATES",
+                "limit": 3
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "INVALID_ARGUMENT: campos desconocidos o inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: IAM o Closet rechazó la sesión.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INDEX_BUSY, INDEX_CHANGED o WARDROBE_CHANGED. Reintentar tras recargar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INDEX_WARDROBE_LIMIT: máximo 100 prendas por sincronización; no guarda un índice parcial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "RAG_NOT_CONFIGURED, EMBEDDING_UNAVAILABLE, VECTOR_STORE_UNAVAILABLE, WARDROBE_UNAVAILABLE o INDEX_TIMEOUT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Operación completada. Nunca devuelve vectores ni credenciales.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutfitExampleSearchResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Solo lectura con IAM. Hasta tres proyecciones públicas de train, con procedencia y estructura. No acepta IDs de usuario, URLs ni selección de split. No descarga imágenes. La similitud no es probabilidad de compatibilidad."
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RecommendationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "occasion"
+        ],
+        "properties": {
+          "occasion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Contexto solicitado. El backend admite como máximo 120 bytes UTF-8 y rechaza espacios como único contenido. El motor demo todavía no evalúa la ocasión.",
+            "example": "Universidad"
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "CASUAL",
+              "FORMAL",
+              "SPORT",
+              "STREETWEAR",
+              "MINIMALIST",
+              "CLASSIC",
+              "BOHEMIAN"
+            ],
+            "description": "Estilo explícito: sustituye la prioridad de estilos guardados en Profile. Filtra etiquetas conocidas; prendas sin estilo declarado siguen siendo candidatas. Si se omite, los estilos guardados se usan como prioridad suave."
+          },
+          "excluded_garments": {
+            "type": "array",
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "description": "IDs excluidos. Se normalizan a minúsculas y se rechazan duplicados, incluso con diferencias de mayúsculas.",
+            "default": []
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 3
+          }
+        },
+        "example": {
+          "occasion": "Universidad",
+          "style": "CASUAL",
+          "excluded_garments": [],
+          "max_results": 3
+        }
+      },
+      "Outfit": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "garment_ids",
+          "explanation",
+          "id",
+          "request_id",
+          "created_at",
+          "is_favorite",
+          "status",
+          "rejected_at",
+          "rejection_reason"
+        ],
+        "properties": {
+          "garment_ids": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 3,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Superior + inferior + calzado, o una pieza + calzado. Solo datos sintéticos."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Explicación fija del motor base; no generada por IA."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "is_favorite": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "GENERATED",
+              "REJECTED"
+            ]
+          },
+          "rejected_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "rejection_reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          }
+        }
+      },
+      "RecommendationResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode",
+          "engine",
+          "persisted",
+          "occasion",
+          "status",
+          "outfits",
+          "user_id",
+          "profile_preferences",
+          "request_id",
+          "created_at",
+          "parameters"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "demo",
+              "live"
+            ]
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "category_rules",
+              "nemotron"
+            ]
+          },
+          "persisted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "occasion": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "GENERATED",
+              "INSUFFICIENT_GARMENTS"
+            ]
+          },
+          "outfits": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/Outfit"
+            }
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID devuelto por IAM. No procede del body, metadata editable ni cabeceras de identidad del cliente."
+          },
+          "profile_preferences": {
+            "$ref": "#/components/schemas/ProfilePreferences"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/RecommendationRequest"
+          },
+          "model": {
+            "type": "string",
+            "description": "Identificador del modelo cuando una propuesta procede de Nemotron; puede omitirse en reglas o historial anterior."
+          },
+          "llm_used": {
+            "type": "boolean",
+            "description": "true si esta propuesta fue generada y validada mediante el LLM. false si se resolvio con reglas, por ejemplo por falta de prendas."
+          },
+          "garments": {
+            "type": "array",
+            "maxItems": 9,
+            "items": {
+              "$ref": "#/components/schemas/GarmentSnapshot"
+            },
+            "description": "Prendas finales revalidadas, únicas, con subcategoría, revisión, fecha e imagen versionada. Presente en nuevas generaciones; puede faltar en registros antiguos."
+          },
+          "style_references": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/StyleReference"
+            }
+          },
+          "outfit_examples": {
+            "type": "array",
+            "maxItems": 3,
+            "description": "Ejemplos recuperados, no prueba de uso por el modelo. Sus IDs externos nunca son garment_ids.",
+            "items": {
+              "$ref": "#/components/schemas/OutfitExample"
+            }
+          },
+          "web_references": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/FashionWebReference"
+            },
+            "description": "On-demand FashionStylist references retrieved via search_fashion_web. External inspiration, never wardrobe IDs or proof of current trends. Optional for older snapshots. Noncommercial license."
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "service",
+          "mode",
+          "recommendations_ready",
+          "engine",
+          "rag_enabled",
+          "llm_enabled",
+          "authentication"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "recommendation-service"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "demo",
+              "disabled",
+              "live"
+            ]
+          },
+          "recommendations_ready": {
+            "type": "boolean",
+            "description": "Indica que el motor demo está habilitado. No es una comprobación de conectividad con IAM ni del armario real."
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "category_rules",
+              "nemotron"
+            ]
+          },
+          "rag_enabled": {
+            "type": "boolean",
+            "description": "Indica si la función de búsqueda vectorial está configurada y habilitada; no es un health check de las dependencias."
+          },
+          "llm_enabled": {
+            "type": "boolean",
+            "description": "El motor Nemotron esta seleccionado y tiene una clave configurada. No comprueba la conectividad ni la validez de la clave en NVIDIA."
+          },
+          "authentication": {
+            "type": "string",
+            "enum": [
+              "iam"
+            ],
+            "description": "Los endpoints protegidos delegan la verificación de sesión en IAM."
+          },
+          "model": {
+            "type": "string",
+            "description": "Identificador del modelo cuando una propuesta procede de Nemotron; puede omitirse en reglas o historial anterior."
+          },
+          "conversations_enabled": {
+            "type": "boolean"
+          },
+          "wardrobe_source": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "fixture",
+              "digital_closet"
+            ]
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ProfilePreferences": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "preferred_styles",
+          "preferred_colors",
+          "avoided_colors",
+          "preferred_categories"
+        ],
+        "properties": {
+          "preferred_styles": {
+            "type": "array",
+            "maxItems": 50,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "preferred_colors": {
+            "type": "array",
+            "maxItems": 50,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "avoided_colors": {
+            "type": "array",
+            "maxItems": 50,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "preferred_categories": {
+            "type": "array",
+            "maxItems": 50,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          }
+        },
+        "description": "Preferencias del usuario obtenidas de Profile y normalizadas: espacios recortados, letras ASCII en mayúsculas. Categorías recuperadas como contexto; aún no alteran la selección. Etiquetas libres que no coincidan con códigos de prendas no generan coincidencias."
+      },
+      "RecommendationRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "created_at",
+          "engine",
+          "explanation",
+          "garment_ids",
+          "id",
+          "is_favorite",
+          "mode",
+          "occasion",
+          "parameters",
+          "persisted",
+          "profile_preferences",
+          "rejected_at",
+          "rejection_reason",
+          "request_id",
+          "status",
+          "user_id"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "demo",
+              "live"
+            ]
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "category_rules",
+              "nemotron"
+            ]
+          },
+          "persisted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "occasion": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID devuelto por IAM. No procede del body, metadata editable ni cabeceras de identidad del cliente."
+          },
+          "profile_preferences": {
+            "$ref": "#/components/schemas/ProfilePreferences"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/RecommendationRequest"
+          },
+          "garment_ids": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 3,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Superior + inferior + calzado, o una pieza + calzado. Solo datos sintéticos."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Explicación fija del motor base; no generada por IA."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_favorite": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "GENERATED",
+              "REJECTED"
+            ]
+          },
+          "rejected_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "rejection_reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "model": {
+            "type": "string",
+            "description": "Identificador del modelo cuando una propuesta procede de Nemotron; puede omitirse en reglas o historial anterior."
+          },
+          "llm_used": {
+            "type": "boolean",
+            "description": "true si esta propuesta fue generada y validada mediante el LLM. false si se resolvio con reglas, por ejemplo por falta de prendas."
+          },
+          "garments": {
+            "type": "array",
+            "maxItems": 9,
+            "items": {
+              "$ref": "#/components/schemas/GarmentSnapshot"
+            },
+            "description": "Prendas finales revalidadas, únicas, con subcategoría, revisión, fecha e imagen versionada. Presente en nuevas generaciones; puede faltar en registros antiguos."
+          },
+          "style_references": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/StyleReference"
+            }
+          },
+          "outfit_examples": {
+            "type": "array",
+            "maxItems": 3,
+            "description": "Ejemplos recuperados, no prueba de uso por el modelo. Sus IDs externos nunca son garment_ids.",
+            "items": {
+              "$ref": "#/components/schemas/OutfitExample"
+            }
+          },
+          "web_references": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/FashionWebReference"
+            },
+            "description": "On-demand FashionStylist references retrieved via search_fashion_web. External inspiration, never wardrobe IDs or proof of current trends. Optional for older snapshots. Noncommercial license."
+          }
+        },
+        "description": "Snapshot de una propuesta propia. status es GENERATED o REJECTED; is_favorite es independiente. Las prendas referenciadas no se vuelven a consultar para mostrar historial."
+      },
+      "RecommendationPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/RecommendationRecord"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "ID del último elemento mostrado; null si no hay otra página."
+          }
+        }
+      },
+      "FavoriteRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "favorite": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "example": {
+          "favorite": true
+        }
+      },
+      "RejectRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Opcional. Se recortan espacios; máximo 500 bytes UTF-8; no puede ser solo espacios."
+          }
+        },
+        "example": {
+          "reason": "Prefiero otra combinación"
+        }
+      },
+      "Conversation": {
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "title",
+          "created_at",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20
+          }
+        }
+      },
+      "ConversationTurn": {
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "client_message_id",
+          "position",
+          "message",
+          "assistant_message",
+          "recommendation",
+          "created_at",
+          "memory"
+        ],
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "client_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "assistant_message": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "recommendation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationResponse"
+              },
+              {
+                "type": "object",
+                "nullable": true,
+                "enum": [
+                  null
+                ]
+              }
+            ],
+            "description": "Propuesta persistida o null si el asistente respondió sin generar un outfit."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/ConversationMemory"
+          }
+        }
+      },
+      "ConversationDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Conversation"
+          },
+          {
+            "type": "object",
+            "required": [
+              "turns"
+            ],
+            "properties": {
+              "turns": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "$ref": "#/components/schemas/ConversationTurn"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ConversationPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/Conversation"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
+      },
+      "ConversationCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "1-120 bytes UTF-8; por defecto Nueva conversacion."
+          }
+        }
+      },
+      "ConversationMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "message",
+          "client_message_id"
+        ],
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "1-2000 bytes UTF-8, sin NUL."
+          },
+          "client_message_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID del envío. Reutilizarlo solo para reintentar el mismo texto."
+          }
+        }
+      },
+      "GarmentSnapshot": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "category",
+          "subcategory",
+          "colors",
+          "styles",
+          "description",
+          "availability",
+          "image",
+          "revision",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "TOP",
+              "BOTTOM",
+              "ONE_PIECE",
+              "OUTERWEAR",
+              "FOOTWEAR",
+              "ACCESSORY"
+            ]
+          },
+          "subcategory": {
+            "type": "string",
+            "nullable": true
+          },
+          "colors": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "BLACK",
+                "WHITE",
+                "GRAY",
+                "BLUE",
+                "RED",
+                "GREEN",
+                "YELLOW",
+                "ORANGE",
+                "PURPLE",
+                "PINK",
+                "BROWN",
+                "BEIGE",
+                "MULTICOLOR"
+              ]
+            }
+          },
+          "styles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "CASUAL",
+                "FORMAL",
+                "SPORT",
+                "STREETWEAR",
+                "MINIMALIST",
+                "CLASSIC",
+                "BOHEMIAN"
+              ]
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "UNAVAILABLE"
+            ]
+          },
+          "image": {
+            "type": "object",
+            "nullable": true,
+            "required": [
+              "id",
+              "version"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "Instantánea versionada de una prenda consultada a Closet. No contiene URL firmada. Describe el estado al generar, no su disponibilidad actual."
+      },
+      "ConversationMemory": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "excluded_colors",
+          "dark_only",
+          "style",
+          "occasion",
+          "profile_updated"
+        ],
+        "description": "Estado acumulado del chat; se guarda junto al turno. profile_updated indica solamente un cambio confirmado de Profile en ese turno.",
+        "properties": {
+          "excluded_colors": {
+            "type": "array",
+            "maxItems": 13,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "BLACK",
+                "WHITE",
+                "GRAY",
+                "BLUE",
+                "RED",
+                "GREEN",
+                "YELLOW",
+                "ORANGE",
+                "PURPLE",
+                "PINK",
+                "BROWN",
+                "BEIGE",
+                "MULTICOLOR"
+              ]
+            }
+          },
+          "dark_only": {
+            "type": "boolean"
+          },
+          "style": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "occasion": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "profile_updated": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "excluded_colors": [
+            "WHITE"
+          ],
+          "dark_only": false,
+          "style": "",
+          "occasion": "",
+          "profile_updated": false
+        }
+      },
+      "VectorSearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Descripción semántica; máximo 120 bytes UTF-8, sin NUL ni solo espacios."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "",
+              "TOP",
+              "BOTTOM",
+              "ONE_PIECE",
+              "FOOTWEAR",
+              "OUTERWEAR",
+              "ACCESSORY"
+            ],
+            "default": ""
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "",
+              "BLACK",
+              "WHITE",
+              "GRAY",
+              "BLUE",
+              "RED",
+              "GREEN",
+              "YELLOW",
+              "ORANGE",
+              "PURPLE",
+              "PINK",
+              "BROWN",
+              "BEIGE",
+              "MULTICOLOR"
+            ],
+            "default": ""
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "",
+              "CASUAL",
+              "FORMAL",
+              "SPORT",
+              "STREETWEAR",
+              "MINIMALIST",
+              "CLASSIC",
+              "BOHEMIAN"
+            ],
+            "default": ""
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 10
+          }
+        }
+      },
+      "VectorSyncResponse": {
+        "type": "object",
+        "required": [
+          "indexed",
+          "removed",
+          "embeddings_generated",
+          "embedding_model",
+          "dimensions"
+        ],
+        "properties": {
+          "indexed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "embeddings_generated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "embedding_model": {
+            "type": "string",
+            "enum": [
+              "nvidia/nemotron-3.5-embed-1b"
+            ]
+          },
+          "dimensions": {
+            "type": "integer",
+            "enum": [
+              1024
+            ]
+          }
+        }
+      },
+      "VectorSearchResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "matched_count",
+          "has_more",
+          "search_mode",
+          "sync"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/GarmentSnapshot"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "similarity": {
+                      "type": "number",
+                      "description": "Similitud coseno; no representa una probabilidad de compatibilidad."
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "matched_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Candidatos disponibles que cumplen filtros exactos, antes del límite; no es un umbral semántico."
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "search_mode": {
+            "type": "string",
+            "enum": [
+              "semantic"
+            ]
+          },
+          "sync": {
+            "$ref": "#/components/schemas/VectorSyncResponse"
+          }
+        }
+      },
+      "StyleReference": {
+        "type": "object",
+        "description": "Referencia recuperada; no demuestra que el modelo la haya utilizado. Adaptación editorial, no datos del inventario.",
+        "required": [
+          "id",
+          "title",
+          "content",
+          "source_url",
+          "license",
+          "license_url",
+          "attribution",
+          "content_kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "license": {
+            "type": "string",
+            "enum": [
+              "CC-BY-SA-4.0"
+            ]
+          },
+          "license_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "content_kind": {
+            "type": "string"
+          }
+        }
+      },
+      "StyleKnowledgeSearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Máximo 512 bytes UTF-8; sin NUL ni solo espacios."
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "",
+              "CASUAL",
+              "FORMAL",
+              "SPORT",
+              "STREETWEAR",
+              "VINTAGE",
+              "MINIMALIST",
+              "BOHEMIAN",
+              "CLASSIC",
+              "ELEGANT"
+            ],
+            "default": ""
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 3
+          }
+        }
+      },
+      "StyleKnowledgeSearchResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "scope"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "published_style_knowledge"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/StyleReference"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "styles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "similarity": {
+                      "type": "number",
+                      "minimum": -1,
+                      "maximum": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "OutfitExample": {
+        "type": "object",
+        "description": "Proyección histórica de categorías básicas de Polyvore; no es inventario del usuario, garantía de compatibilidad ni tendencia actual.",
+        "required": [
+          "id",
+          "source_outfit_id",
+          "title",
+          "structure",
+          "items",
+          "content",
+          "source_url",
+          "source_commit",
+          "source_archive_sha256",
+          "source_split",
+          "license",
+          "license_scope",
+          "license_url",
+          "attribution",
+          "content_kind",
+          "source_items_count",
+          "omitted_items_count"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source_outfit_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "structure": {
+            "type": "string",
+            "enum": [
+              "SEPARATES",
+              "ONE_PIECE"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "source_commit": {
+            "type": "string"
+          },
+          "source_archive_sha256": {
+            "type": "string"
+          },
+          "source_split": {
+            "type": "string",
+            "enum": [
+              "train"
+            ]
+          },
+          "license": {
+            "type": "string",
+            "enum": [
+              "Apache-2.0"
+            ]
+          },
+          "license_scope": {
+            "type": "string",
+            "enum": [
+              "repository_metadata_only_no_images"
+            ]
+          },
+          "license_url": {
+            "type": "string"
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "content_kind": {
+            "type": "string",
+            "enum": [
+              "polyvore_core_projection"
+            ]
+          },
+          "source_items_count": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 8
+          },
+          "omitted_items_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6
+          },
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 3,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "category",
+                "name",
+                "source_item_index"
+              ],
+              "properties": {
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "TOP",
+                    "BOTTOM",
+                    "ONE_PIECE",
+                    "FOOTWEAR"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "source_item_index": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 99
+                }
+              }
+            }
+          }
+        }
+      },
+      "OutfitExampleSearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Máximo 512 bytes UTF-8; sin NUL ni solo espacios."
+          },
+          "structure": {
+            "type": "string",
+            "enum": [
+              "",
+              "SEPARATES",
+              "ONE_PIECE"
+            ],
+            "default": ""
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 3
+          }
+        }
+      },
+      "OutfitExampleSearchResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "scope"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "published_polyvore_train_projections"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/OutfitExample"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "similarity": {
+                      "type": "number",
+                      "minimum": -1,
+                      "maximum": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "FashionWebReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "content",
+          "source_url",
+          "audience",
+          "season",
+          "occasion",
+          "source_revision",
+          "dataset_release",
+          "license",
+          "license_url",
+          "attribution"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^fashionstylist-(male|female)-b[1-9][0-9]{0,2}$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 1200
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "CSV source at the verified commit, with original line number. No product/image URLs."
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "MALE",
+              "FEMALE"
+            ]
+          },
+          "season": {
+            "type": "string",
+            "maxLength": 30
+          },
+          "occasion": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "source_revision": {
+            "type": "string",
+            "enum": [
+              "f834484cecaed20d08fea97be7781426063a7275"
+            ]
+          },
+          "dataset_release": {
+            "type": "string",
+            "enum": [
+              "2026-04-08"
+            ]
+          },
+          "license": {
+            "type": "string",
+            "enum": [
+              "CC-BY-NC-4.0"
+            ]
+          },
+          "license_url": {
+            "type": "string",
+            "enum": [
+              "https://creativecommons.org/licenses/by-nc/4.0/"
+            ]
+          },
+          "attribution": {
+            "type": "string",
+            "maxLength": 240
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Access token obtenido al iniciar sesión con IAM. Pegar solo el token, sin el prefijo Bearer. Recommendation comprueba la sesión en IAM; no renueva tokens."
+      }
+    }
+  }
+}
